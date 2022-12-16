@@ -1,0 +1,169 @@
+---
+title: "Untitled"
+author: "Alex Cheung"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+library(data.table)
+library(gridExtra)
+library(tidyverse)
+library(sjmisc)
+library(sciplot)
+library(ggplot2)
+library(labelled)
+library(usmap)
+library(gmodels)
+library(haven)
+library(tidyverse)
+library(psych) 
+library(car) 
+library(tidyr)
+library(dplyr)
+library(ggeasy)
+library(stringr)
+library(ggplot2)
+library(rockchalk)
+library(cdlTools) 
+library(terra)
+library(ggthemes)
+library(labelled)
+mean_round <- function(numbers,sig_digits=2){return(round(mean(as.numeric(numbers),na.rm=TRUE),sig_digits))}
+addline_format <- function(x,...){
+    gsub('\\s','\n',x)
+}
+```
+
+# Data from Covid Impact Survey in 2020 (April 30 - May 3, May 4 - 10, June 1 - 8)
+```{r}
+cov_impact <- list.files(path = "Covid_Impact_Survey", pattern = "*.csv", full.names = TRUE) %>% map_df(~fread(.))
+
+cov_impact <- cov_impact %>% janitor::clean_names()
+
+```
+
+```{r}
+cov_impact$job_optimism_3week <- dplyr::recode(cov_impact$econ4a, "(5) Not likely at all" = "1", "(4) Not too likely" = "2", "(3) Moderately likely" = "3", "(2) Very likely" = "4", "(1) Extremely likely" = "5") %>% as.numeric()
+
+cov_impact$job_optimism_3month <- dplyr::recode(cov_impact$econ4b, "(5) Not likely at all" = "1", "(4) Not too likely" = "2", "(3) Moderately likely" = "3", "(2) Very likely" = "4", "(1) Extremely likely" = "5") %>% as.numeric()
+
+cov_impact <- cov_impact %>% 
+        rename("race" = "raceth")
+
+cov_impact <- cov_impact %>% na_if("(88) Removed for disclosure risk")
+
+```
+
+```{r}
+# 3 week prediction of job optimism based on race
+cov_impact %>% filter(race != "(99) REFUSED", race != "(98) SKIPPED ON WEB", race != "(77) DON'T KNOW", race != "NA") %>% ggplot(aes(x=week,y=job_optimism_3week,group=race,color=race))+ stat_summary(geom = "line", fun = mean, position = position_dodge(width = .1), linewidth=1) + stat_summary(geom = "point", fun = mean, position = position_dodge(width = .1), size=3) +
+    geom_smooth(se=FALSE) + theme_clean() + scale_color_colorblind() +
+  ylab("Job Optimism") + xlab(" SUrvey Weeks") + labs(title = "Job Optimism in 3 Weeks") + labs(color = "Race")
+```
+
+## Interpretation of Figure 1
+This graph shows the survey respondent's level of optimism of job retention in 3 weeks over a 3 week survey based on their ethnicity. As we can see, there seems to be a positive trend increase after 2 weeks among most races except for Hispanics. There was some initial lack of optimism among Black participants, but they had the biggest increase in optimism score. Interestingly enough, participants who responded with Other started out with the highest score, and had a minor increase. 
+
+```{r}
+# 3 month prediction of job optimism based on race
+cov_impact %>% filter(race != "(99) REFUSED", race != "(98) SKIPPED ON WEB", race != "(77) DON'T KNOW", race != "NA") %>% ggplot(aes(x=week,y=job_optimism_3month,group=race,color=race)) + stat_summary(geom = "line", fun = mean, position = position_dodge(width = .1), linewidth=1) + stat_summary(geom = "point", fun = mean, position = position_dodge(width = .1), size=3) +
+    geom_smooth(se=FALSE) + theme_clean() + scale_color_excel() +
+  ylab("Job Optimism") + xlab("Survey Weeks") + labs(title = "Job Optimism Score by Months") + labs(color = "Race")
+```
+## Interpretation of Figure 2
+This graph showed results from a question asking participants what their job status would be and how optimistic they felt about keeping their jobs in 3 months over a 3 week survey. Compared to the first figure where it displayed results predicting optimism in 3 weeks, there isn't much change between a 3 week prediction and 3 month prediction. 
+
+```{r}
+# how men and women feel about wearing masks based on education
+cov_impact <- cov_impact %>% mutate(education = dplyr::recode(education, "(2) HIGH SCHOOL GRADUATE - high school DIPLOMA or the equivalent (GED)" = "(2) HS graduate or GED"))
+
+mask_education <- cov_impact %>% filter(gender != "(98) SKIPPED ON WEB", gender != "(99) REFUSED", education != "(98) SKIPPED ON WEB", education != "(99) REFUSED", education != "(77) Not sure") %>% mutate(
+  `Mask` = as.numeric(to_factor(phys2_2))) %>% 
+  group_by(to_factor(education),to_factor(gender)) %>% 
+  rename(`Education level`=`to_factor(education)`) %>% 
+  rename(`Responder's sex`=`to_factor(gender)`) %>% 
+  drop_na(`Mask`) %>% 
+  dplyr::summarize(
+    mean = mean(`Mask`,na.rm = T),
+    se = se(`Mask`,na.rm = T))
+
+mask_education
+```
+
+```{r}
+mask_education %>% 
+    ggplot(aes(x= `Education level`, y = mean, group = `Responder's sex`, fill = `Responder's sex`, color= `Responder's sex`)) + 
+    stat_summary(geom = "point", fun = mean, position = position_dodge(width = .1),shape=21, size=3) +
+    geom_smooth(se=FALSE,method="lm")+
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), position = position_dodge(width = .1),width=.1)+
+    xlab("Education Level") + 
+    ylab("Proportion Wearing Masks")+
+    scale_fill_manual(name= "Responder's gender", labels= c('Male', 'Female'), values = c("blue", "red")) +
+    scale_color_manual(name= "Responder's gender", labels= c('Male', 'Female'), values = c("blue", "red")) +
+    theme_bw(base_size = 9)+
+    annotate("text", x = 6, y = .2, color="blue",label = "Males Wearing Masks")+
+    annotate("text", x = 6, y = .3, color="red",label = "Females Wearing Masks")+
+    theme(legend.position="none")
+```
+
+## Interpretation Figure 3
+We can see that there was a slight correlation between between level of education and mask wearing depending on gender. Females respondents who had some college education and above replied they were slightly more willing to wear masks than male respondents.
+```{r}
+# Americans report wearing a mask in response to the coronavirus pandemic
+cov_impact <- cov_impact %>% mutate(p_geo = dplyr::recode(p_geo, "(1) California" = "CA", "(2) Colorado" = "CO", "(3) Florida" = "FL", "(4) Louisiana" = "LA", "(5) Minnesota" = "MN", "(6) Missouri" = "MO", "(7) Montana" = "MT", "(8) New York" = "NY", "(9) Oregon" = "OR", "(10) Texas" = "TX", "(11) Atlanta-Sandy Springs-Alpharetta, Georgia" = "GA", "(12) Baltimore-Columbia-Towson, Maryland" = "MD", "(13) Birmingham-Hoover, Alabama" = "AL", "(14) Chicago-Naperville-Elgin, Illinois-Indiana-Wisconsin" = "WI", "(16) Columbus, Ohio" = "OH", "(17) Phoenix-Mesa-Chandler, Arizona" = "AZ", "(18) Pittsburgh, Pennsylvania" = "PA"))
+
+mask_region<- cov_impact %>% filter(p_geo != "(15) Cleveland-Elyria, Ohio") %>% mutate(
+  `Mask Wearing` = as.numeric(to_factor(phys2_2))) %>% 
+  group_by(p_geo) %>% dplyr::summarize(mean_mask = mean(`Mask Wearing`,na.rm=TRUE)) %>%
+  drop_na(p_geo)
+
+mask_region <- mask_region %>% rename(state = "p_geo") 
+mask_region <- mask_region[-1,]
+
+plot_usmap(data=mask_region, values = "mean_mask", regions = "states", color = "black") + 
+  scale_fill_binned(type = "gradient", name = "Reported Mask Usage")+
+  labs(title = "Americans report wearing a mask in response to the coronavirus pandemic") +
+  theme(legend.position = "right")
+ 
+```
+
+## Interpretation of Figure 4
+
+```{r}
+# Depression time length across the United States
+  
+depression_region<- cov_impact %>% filter(soc5b != "(98) SKIPPED ON WEB", soc5b != "(99) REFUSED", soc5b != "(77) DON'T KNOW", p_geo != "(15) Cleveland-Elyria, Ohio") %>% mutate(
+  `Depression` = as.numeric(as_factor(soc5b))) %>% 
+  group_by(p_geo) %>% dplyr::summarize(mean_depression = mean(`Depression`,na.rm=TRUE)) %>%
+  drop_na(p_geo)
+
+depression_region <- depression_region %>% rename(state = "p_geo") 
+depression_region <- depression_region[-1,]
+
+plot_usmap(data=depression_region, values = "mean_depression", regions = "states", color = "black") + 
+  scale_fill_binned(type = "viridis", name = "Reported Time Length of Depression")+
+  labs(title = "Stated depression time period during Covid 2020") +
+  theme(legend.position = "right")
+```
+
+# Interpretation of Figure 4
+We can see that the time length of depression is most highest in more liberal states vs conservative states, which is interesting because I would have thought the opposite.
+
+```{r}
+# Percentage of People Saying They Ran out of Food
+
+food_region<- cov_impact %>% filter(econ5a_a != "(98) SKIPPED ON WEB", econ5a_a != "(99) REFUSED", econ5a_a != "(77) DON'T KNOW", p_geo != "(15) Cleveland-Elyria, Ohio") %>% mutate(
+  `Food` = as.numeric(as_factor(econ5a_a))) %>% 
+  group_by(p_geo) %>% dplyr::summarize(mean_food = mean(`Food`,na.rm=TRUE)) %>%
+  drop_na(p_geo)
+
+food_region <- food_region %>% rename(state = "p_geo") 
+food_region <- food_region[-1,]
+
+plot_usmap(data=food_region, values = "mean_food", regions = "states", color = "black") + 
+  scale_fill_binned(type = "gradient", name = "Reported Food Shortage Percentages")+
+  labs(title = "Food Shortages from May - June (2020)") +
+  theme(legend.position = "right")
+```
+
